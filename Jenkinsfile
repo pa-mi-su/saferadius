@@ -16,19 +16,19 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
+                echo '📥 Checking out source code...'
                 checkout scm
-                script {
-                    echo "🔁 Current Git Branch: ${env.GIT_BRANCH}"
-                }
             }
         }
 
         stage('Build & Test') {
             steps {
+                echo '🔨 Building and testing all microservices...'
                 script {
                     def services = ['user-service', 'location-service', 'crime-service', 'api-gateway', 'discovery-server']
                     services.each { svc ->
                         dir(svc) {
+                            echo "▶ Building: ${svc}"
                             sh "mvn clean install -DskipTests=false"
                         }
                     }
@@ -38,11 +38,13 @@ pipeline {
 
         stage('Docker Build & Push') {
             when {
-                expression {
-                    return env.GIT_BRANCH?.contains("main") || env.GIT_BRANCH?.contains("dev")
+                anyOf {
+                    branch 'main'
+                    branch 'dev'
                 }
             }
             steps {
+                echo '🐳 Building and pushing Docker images to Docker Hub...'
                 script {
                     def services = ['user-service', 'location-service', 'crime-service', 'api-gateway', 'discovery-server']
 
@@ -54,8 +56,9 @@ pipeline {
 
                     services.each { svc ->
                         dir(svc) {
-                            sh "docker build -t $REGISTRY/${svc}:${GIT_BRANCH} ."
-                            sh "docker push $REGISTRY/${svc}:${GIT_BRANCH}"
+                            echo "📦 Building Docker image for: ${svc}"
+                            sh "docker build -t $REGISTRY/${svc}:${BRANCH_NAME} ."
+                            sh "docker push $REGISTRY/${svc}:${BRANCH_NAME}"
                         }
                     }
                 }
@@ -64,19 +67,26 @@ pipeline {
 
         stage('Helm Deploy') {
             when {
-                expression {
-                    return env.GIT_BRANCH?.contains("main") || env.GIT_BRANCH?.contains("dev")
+                anyOf {
+                    branch 'main'
+                    branch 'dev'
                 }
             }
             steps {
+                echo '🚀 Deploying to EKS using Helm...'
                 script {
-                    def namespace = (env.GIT_BRANCH?.contains("main")) ? PROD_NAMESPACE : STAGING_NAMESPACE
+                    def namespace = (env.BRANCH_NAME == 'main') ? PROD_NAMESPACE : STAGING_NAMESPACE
 
-                    sh '''
-                        aws eks --region us-east-1 update-kubeconfig --name saferadius
-                    '''
+                    // Ensure kubeconfig is up to date
+                    sh "aws eks --region us-east-1 update-kubeconfig --name saferadius"
 
-                    sh "helm upgrade --install saferadius ./helm -n ${namespace} --create-namespace"
+                    // Dry-run and debug first
+                    echo '🔍 Running Helm dry-run for validation...'
+                    sh "helm upgrade --install saferadius ./helm -n ${namespace} --create-namespace --dry-run --debug"
+
+                    // Actual deployment
+                    echo '🚀 Running actual Helm deployment...'
+                    sh "helm upgrade --install saferadius ./helm -n ${namespace} --create-namespace --debug"
                 }
             }
         }
@@ -87,7 +97,7 @@ pipeline {
             echo '✅ Pipeline completed successfully.'
         }
         failure {
-            echo '❌ Pipeline failed.'
+            echo '❌ Pipeline failed. Check the logs above for details.'
         }
     }
 }
