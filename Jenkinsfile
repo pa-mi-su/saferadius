@@ -11,40 +11,36 @@ pipeline {
     }
 
     stages {
-
-        stage('Checkout') {
+        stage('Checkout Code') {
             steps {
                 checkout scm
             }
         }
 
-        stage('Extract Branch Name') {
+        stage('Get Branch Name') {
             steps {
                 script {
-                    // Safely get branch name even on detached HEAD
                     def branch = sh(
-                        script: "git rev-parse --abbrev-ref HEAD",
+                        script: "git rev-parse --abbrev-ref HEAD || echo unknown",
                         returnStdout: true
                     ).trim()
-
-                    if (branch == 'HEAD') {
+                    if (branch == "HEAD") {
                         branch = sh(
                             script: "git name-rev --name-only HEAD || echo unknown",
                             returnStdout: true
                         ).trim()
                     }
-
-                    echo "📌 Branch detected: ${branch}"
-                    env.CURRENT_BRANCH = branch
+                    echo "📌 Using branch: ${branch}"
+                    env.BRANCH = branch
                 }
             }
         }
 
-        stage('Build & Test') {
+        stage('Build All Services') {
             steps {
                 script {
                     def services = ['user-service', 'location-service', 'crime-service', 'api-gateway', 'discovery-server']
-                    for (svc in services) {
+                    services.each { svc ->
                         dir(svc) {
                             echo "🔨 Building ${svc}"
                             sh "mvn clean install -DskipTests=false"
@@ -56,17 +52,16 @@ pipeline {
 
         stage('Docker Build & Push') {
             when {
-                expression { env.CURRENT_BRANCH == 'main' || env.CURRENT_BRANCH == 'dev' }
+                expression { env.BRANCH == "main" || env.BRANCH == "dev" }
             }
             steps {
                 script {
                     def services = ['user-service', 'location-service', 'crime-service', 'api-gateway', 'discovery-server']
-                    for (svc in services) {
+                    services.each { svc ->
                         dir(svc) {
-                            echo "🐳 Building Docker image for ${svc}"
-                            sh "docker build -t ${REGISTRY}/${DOCKERHUB_USERNAME}/${svc}:${env.CURRENT_BRANCH} ."
-                            echo "📤 Pushing image to Docker Hub"
-                            sh "docker push ${REGISTRY}/${DOCKERHUB_USERNAME}/${svc}:${env.CURRENT_BRANCH}"
+                            echo "🐳 Docker build for ${svc}"
+                            sh "docker build -t ${REGISTRY}/${DOCKERHUB_USERNAME}/${svc}:${env.BRANCH} ."
+                            sh "docker push ${REGISTRY}/${DOCKERHUB_USERNAME}/${svc}:${env.BRANCH}"
                         }
                     }
                 }
@@ -75,15 +70,15 @@ pipeline {
 
         stage('Helm Deploy to EKS') {
             when {
-                expression { env.CURRENT_BRANCH == 'main' || env.CURRENT_BRANCH == 'dev' }
+                expression { env.BRANCH == "main" || env.BRANCH == "dev" }
             }
             steps {
                 script {
-                    echo "🚀 Deploying to EKS using Helm for branch: ${env.CURRENT_BRANCH}"
+                    echo "🚀 Deploying ${env.BRANCH} to EKS"
                     sh """
                         helm upgrade --install ${HELM_RELEASE_NAME} ${HELM_CHART_DIR} \
                             --namespace ${NAMESPACE} \
-                            --set image.tag=${env.CURRENT_BRANCH} \
+                            --set image.tag=${env.BRANCH} \
                             --set image.registry=${REGISTRY} \
                             --set image.repository=${DOCKERHUB_USERNAME}
                     """
@@ -94,10 +89,10 @@ pipeline {
 
     post {
         success {
-            echo "✅ Pipeline completed successfully."
+            echo "✅ Success"
         }
         failure {
-            echo "❌ Pipeline failed."
+            echo "❌ Failed"
         }
     }
 }
