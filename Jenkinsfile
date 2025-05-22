@@ -16,19 +16,17 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                echo '📥 Checking out source code...'
                 checkout scm
             }
         }
 
         stage('Build & Test') {
             steps {
-                echo '🔨 Building and testing all microservices...'
                 script {
                     def services = ['user-service', 'location-service', 'crime-service', 'api-gateway', 'discovery-server']
                     services.each { svc ->
                         dir(svc) {
-                            echo "▶ Building: ${svc}"
+                            echo "🔨 Building and testing $svc"
                             sh "mvn clean install -DskipTests=false"
                         }
                     }
@@ -44,21 +42,28 @@ pipeline {
                 }
             }
             steps {
-                echo '🐳 Building and pushing Docker images to Docker Hub...'
                 script {
                     def services = ['user-service', 'location-service', 'crime-service', 'api-gateway', 'discovery-server']
 
+                    // 🐳 Log in to Docker Hub using stored credentials
                     withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                         sh '''
                             echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                            docker info | grep Username || echo "⚠️ Docker login might have failed"
                         '''
                     }
 
+                    // 🛠 Build and push Docker image for each microservice
                     services.each { svc ->
                         dir(svc) {
-                            echo "📦 Building Docker image for: ${svc}"
+                            echo "📦 Building Docker image for $svc"
                             sh "docker build -t $REGISTRY/${svc}:${BRANCH_NAME} ."
+
+                            echo "📤 Pushing Docker image for $svc to $REGISTRY"
                             sh "docker push $REGISTRY/${svc}:${BRANCH_NAME}"
+
+                            // ✅ Confirm image exists locally
+                            sh "docker images | grep ${svc}"
                         }
                     }
                 }
@@ -73,19 +78,15 @@ pipeline {
                 }
             }
             steps {
-                echo '🚀 Deploying to EKS using Helm...'
                 script {
                     def namespace = (env.BRANCH_NAME == 'main') ? PROD_NAMESPACE : STAGING_NAMESPACE
 
-                    // Ensure kubeconfig is up to date
-                    sh "aws eks --region us-east-1 update-kubeconfig --name saferadius"
+                    // 🧭 Update kubeconfig so kubectl/helm work with EKS
+                    sh '''
+                        aws eks --region us-east-1 update-kubeconfig --name saferadius
+                    '''
 
-                    // Dry-run and debug first
-                    echo '🔍 Running Helm dry-run for validation...'
-                    sh "helm upgrade --install saferadius ./helm -n ${namespace} --create-namespace --dry-run --debug"
-
-                    // Actual deployment
-                    echo '🚀 Running actual Helm deployment...'
+                    // 🛳 Deploy application using Helm
                     sh "helm upgrade --install saferadius ./helm -n ${namespace} --create-namespace --debug"
                 }
             }
@@ -97,7 +98,7 @@ pipeline {
             echo '✅ Pipeline completed successfully.'
         }
         failure {
-            echo '❌ Pipeline failed. Check the logs above for details.'
+            echo '❌ Pipeline failed.'
         }
     }
 }
