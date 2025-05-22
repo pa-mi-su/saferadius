@@ -4,15 +4,24 @@ pipeline {
     environment {
         REGISTRY = "docker.io"
         DOCKERHUB_USERNAME = "paumicsul"
+        IMAGE_TAG = "latest"
         HELM_RELEASE_NAME = "saferadius"
         HELM_CHART_DIR = "./helm"
         NAMESPACE = "default"
     }
 
     stages {
-        stage('Detect Branch') {
+
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Extract Branch Name') {
             steps {
                 script {
+                    // Safely get branch name even on detached HEAD
                     def branch = sh(
                         script: "git rev-parse --abbrev-ref HEAD",
                         returnStdout: true
@@ -20,13 +29,13 @@ pipeline {
 
                     if (branch == 'HEAD') {
                         branch = sh(
-                            script: "git describe --contains --all HEAD || echo unknown",
+                            script: "git name-rev --name-only HEAD || echo unknown",
                             returnStdout: true
                         ).trim()
                     }
 
-                    echo "📌 Branch: ${branch}"
-                    env.BRANCH_NAME = branch
+                    echo "📌 Branch detected: ${branch}"
+                    env.CURRENT_BRANCH = branch
                 }
             }
         }
@@ -35,7 +44,7 @@ pipeline {
             steps {
                 script {
                     def services = ['user-service', 'location-service', 'crime-service', 'api-gateway', 'discovery-server']
-                    services.each { svc ->
+                    for (svc in services) {
                         dir(svc) {
                             echo "🔨 Building ${svc}"
                             sh "mvn clean install -DskipTests=false"
@@ -47,16 +56,17 @@ pipeline {
 
         stage('Docker Build & Push') {
             when {
-                expression { env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'dev' }
+                expression { env.CURRENT_BRANCH == 'main' || env.CURRENT_BRANCH == 'dev' }
             }
             steps {
                 script {
                     def services = ['user-service', 'location-service', 'crime-service', 'api-gateway', 'discovery-server']
-                    services.each { svc ->
+                    for (svc in services) {
                         dir(svc) {
-                            def image = "${REGISTRY}/${DOCKERHUB_USERNAME}/${svc}:${env.BRANCH_NAME}"
-                            sh "docker build -t ${image} ."
-                            sh "docker push ${image}"
+                            echo "🐳 Building Docker image for ${svc}"
+                            sh "docker build -t ${REGISTRY}/${DOCKERHUB_USERNAME}/${svc}:${env.CURRENT_BRANCH} ."
+                            echo "📤 Pushing image to Docker Hub"
+                            sh "docker push ${REGISTRY}/${DOCKERHUB_USERNAME}/${svc}:${env.CURRENT_BRANCH}"
                         }
                     }
                 }
@@ -65,16 +75,17 @@ pipeline {
 
         stage('Helm Deploy to EKS') {
             when {
-                expression { env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'dev' }
+                expression { env.CURRENT_BRANCH == 'main' || env.CURRENT_BRANCH == 'dev' }
             }
             steps {
                 script {
+                    echo "🚀 Deploying to EKS using Helm for branch: ${env.CURRENT_BRANCH}"
                     sh """
-                    helm upgrade --install ${HELM_RELEASE_NAME} ${HELM_CHART_DIR} \
-                        --namespace ${NAMESPACE} \
-                        --set image.tag=${env.BRANCH_NAME} \
-                        --set image.registry=${REGISTRY} \
-                        --set image.repository=${DOCKERHUB_USERNAME}
+                        helm upgrade --install ${HELM_RELEASE_NAME} ${HELM_CHART_DIR} \
+                            --namespace ${NAMESPACE} \
+                            --set image.tag=${env.CURRENT_BRANCH} \
+                            --set image.registry=${REGISTRY} \
+                            --set image.repository=${DOCKERHUB_USERNAME}
                     """
                 }
             }
@@ -83,10 +94,10 @@ pipeline {
 
     post {
         success {
-            echo "✅ Done on branch: ${env.BRANCH_NAME}"
+            echo "✅ Pipeline completed successfully."
         }
         failure {
-            echo "❌ Failed on branch: ${env.BRANCH_NAME}"
+            echo "❌ Pipeline failed."
         }
     }
 }
