@@ -11,17 +11,6 @@ pipeline {
     }
 
     stages {
-        stage('Checkout') {
-            steps {
-                checkout scm
-                script {
-                    def ref = sh(script: "git symbolic-ref --short HEAD || git describe --tags --exact-match || echo detached", returnStdout: true).trim()
-                    echo "📌 Detected BRANCH_NAME: ${ref}"
-                    env.BRANCH_NAME = ref
-                }
-            }
-        }
-
         stage('Build & Test') {
             steps {
                 script {
@@ -38,8 +27,9 @@ pipeline {
 
         stage('Docker Build & Push') {
             when {
-                expression {
-                    return env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'dev'
+                anyOf {
+                    branch 'main'
+                    branch 'dev'
                 }
             }
             steps {
@@ -59,8 +49,9 @@ pipeline {
 
         stage('Helm Deploy') {
             when {
-                expression {
-                    return env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'dev'
+                anyOf {
+                    branch 'main'
+                    branch 'dev'
                 }
             }
             steps {
