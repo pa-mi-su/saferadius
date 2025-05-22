@@ -16,8 +16,12 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                // ⏬ Clone the source code from GitHub
                 checkout scm
+                script {
+                    // 📌 Explicitly set BRANCH_NAME so later "when" checks work
+                    env.BRANCH_NAME = sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).trim()
+                    echo "📌 Detected BRANCH_NAME: ${env.BRANCH_NAME}"
+                }
             }
         }
 
