@@ -10,17 +10,20 @@ pipeline {
     }
 
     stages {
-        stage('Get Branch Name') {
+        stage('Detect Branch') {
             steps {
                 script {
-                    // Fallback-safe way to get the real branch name
                     def branch = sh(
-                        script: '''
-                            BRANCH_NAME=$(git symbolic-ref --short HEAD 2>/dev/null || git rev-parse --short HEAD)
-                            echo $BRANCH_NAME
-                        ''',
+                        script: "git rev-parse --abbrev-ref HEAD",
                         returnStdout: true
                     ).trim()
+
+                    if (branch == 'HEAD') {
+                        branch = sh(
+                            script: "git describe --contains --all HEAD || echo unknown",
+                            returnStdout: true
+                        ).trim()
+                    }
 
                     echo "📌 Branch: ${branch}"
                     env.BRANCH_NAME = branch
@@ -42,17 +45,6 @@ pipeline {
             }
         }
 
-        stage('Docker Login') {
-            when {
-                expression { env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'dev' }
-            }
-            steps {
-                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                    sh 'echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin ${REGISTRY}'
-                }
-            }
-        }
-
         stage('Docker Build & Push') {
             when {
                 expression { env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'dev' }
@@ -63,7 +55,6 @@ pipeline {
                     services.each { svc ->
                         dir(svc) {
                             def image = "${REGISTRY}/${DOCKERHUB_USERNAME}/${svc}:${env.BRANCH_NAME}"
-                            echo "🐳 Building and pushing ${image}"
                             sh "docker build -t ${image} ."
                             sh "docker push ${image}"
                         }
@@ -78,13 +69,12 @@ pipeline {
             }
             steps {
                 script {
-                    echo "🚀 Helm deploy for ${env.BRANCH_NAME}"
                     sh """
-                        helm upgrade --install ${HELM_RELEASE_NAME} ${HELM_CHART_DIR} \
-                          --namespace ${NAMESPACE} \
-                          --set image.tag=${env.BRANCH_NAME} \
-                          --set image.registry=${REGISTRY} \
-                          --set image.repository=${DOCKERHUB_USERNAME}
+                    helm upgrade --install ${HELM_RELEASE_NAME} ${HELM_CHART_DIR} \
+                        --namespace ${NAMESPACE} \
+                        --set image.tag=${env.BRANCH_NAME} \
+                        --set image.registry=${REGISTRY} \
+                        --set image.repository=${DOCKERHUB_USERNAME}
                     """
                 }
             }
@@ -93,10 +83,10 @@ pipeline {
 
     post {
         success {
-            echo "✅ Finished successfully on branch: ${env.BRANCH_NAME}"
+            echo "✅ Done on branch: ${env.BRANCH_NAME}"
         }
         failure {
-            echo "❌ Pipeline failed on branch: ${env.BRANCH_NAME}"
+            echo "❌ Failed on branch: ${env.BRANCH_NAME}"
         }
     }
 }
