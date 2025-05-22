@@ -2,15 +2,12 @@ pipeline {
     agent any
 
     environment {
-        REGISTRY = "docker.io/paumicsul"
-        PROD_NAMESPACE = "saferadius-prod"
-        STAGING_NAMESPACE = "saferadius-staging"
-        MAVEN_OPTS = "-Dmaven.repo.local=.m2/repository"
-    }
-
-    options {
-        skipDefaultCheckout true
-        timestamps()
+        REGISTRY = "docker.io"
+        DOCKERHUB_USERNAME = "paumicsul"
+        IMAGE_TAG = "latest"
+        HELM_RELEASE_NAME = "saferadius"
+        HELM_CHART_DIR = "./helm"
+        NAMESPACE = "default"
     }
 
     stages {
@@ -18,9 +15,9 @@ pipeline {
             steps {
                 checkout scm
                 script {
-                    // 📌 Explicitly set BRANCH_NAME so later "when" checks work
-                    env.BRANCH_NAME = sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).trim()
-                    echo "📌 Detected BRANCH_NAME: ${env.BRANCH_NAME}"
+                    def ref = sh(script: "git symbolic-ref --short HEAD || git describe --tags --exact-match || echo detached", returnStdout: true).trim()
+                    echo "📌 Detected BRANCH_NAME: ${ref}"
+                    env.BRANCH_NAME = ref
                 }
             }
         }
@@ -28,10 +25,8 @@ pipeline {
         stage('Build & Test') {
             steps {
                 script {
-                    echo "🔍 BRANCH_NAME = ${env.BRANCH_NAME}, GIT_BRANCH = ${env.GIT_BRANCH}"
-
                     def services = ['user-service', 'location-service', 'crime-service', 'api-gateway', 'discovery-server']
-                    services.each { svc ->
+                    for (svc in services) {
                         dir(svc) {
                             echo "🔨 Building and testing ${svc}"
                             sh "mvn clean install -DskipTests=false"
@@ -44,27 +39,18 @@ pipeline {
         stage('Docker Build & Push') {
             when {
                 expression {
-                    def branch = env.BRANCH_NAME ?: env.GIT_BRANCH ?: 'unknown'
-                    echo "🧭 Docker stage on branch: ${branch}"
-                    return branch == 'main' || branch == 'dev'
+                    return env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'dev'
                 }
             }
             steps {
                 script {
                     def services = ['user-service', 'location-service', 'crime-service', 'api-gateway', 'discovery-server']
-
-                    // 🔐 Docker Hub login using Jenkins credentials
-                    withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                        sh '''
-                            echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-                        '''
-                    }
-
-                    services.each { svc ->
+                    for (svc in services) {
                         dir(svc) {
-                            echo "📦 Building and pushing Docker image for ${svc}"
-                            sh "docker build -t $REGISTRY/${svc}:${env.BRANCH_NAME} ."
-                            sh "docker push $REGISTRY/${svc}:${env.BRANCH_NAME}"
+                            echo "🐳 Building Docker image for ${svc}"
+                            sh "docker build -t ${REGISTRY}/${DOCKERHUB_USERNAME}/${svc}:${IMAGE_TAG} ."
+                            echo "📤 Pushing image to Docker Hub"
+                            sh "docker push ${REGISTRY}/${DOCKERHUB_USERNAME}/${svc}:${IMAGE_TAG}"
                         }
                     }
                 }
@@ -74,23 +60,19 @@ pipeline {
         stage('Helm Deploy') {
             when {
                 expression {
-                    def branch = env.BRANCH_NAME ?: env.GIT_BRANCH ?: 'unknown'
-                    echo "🧭 Helm stage on branch: ${branch}"
-                    return branch == 'main' || branch == 'dev'
+                    return env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'dev'
                 }
             }
             steps {
                 script {
-                    def namespace = (env.BRANCH_NAME == 'main') ? PROD_NAMESPACE : STAGING_NAMESPACE
-
-                    // 🔧 Configure kubectl with AWS EKS cluster
-                    sh '''
-                        aws eks --region us-east-1 update-kubeconfig --name saferadius
-                    '''
-
-                    // 🚀 Deploy Helm chart to EKS
-                    echo "🚀 Deploying to namespace: ${namespace}"
-                    sh "helm upgrade --install saferadius ./helm -n ${namespace} --create-namespace --debug"
+                    echo "🚀 Deploying with Helm"
+                    sh """
+                    helm upgrade --install ${HELM_RELEASE_NAME} ${HELM_CHART_DIR} \
+                        --namespace ${NAMESPACE} \
+                        --set image.tag=${IMAGE_TAG} \
+                        --set image.registry=${REGISTRY} \
+                        --set image.repository=${DOCKERHUB_USERNAME}
+                    """
                 }
             }
         }
@@ -98,10 +80,10 @@ pipeline {
 
     post {
         success {
-            echo '✅ Pipeline completed successfully.'
+            echo "✅ Pipeline completed successfully."
         }
         failure {
-            echo '❌ Pipeline failed.'
+            echo "❌ Pipeline failed."
         }
     }
 }
