@@ -16,6 +16,7 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
+                // ⏬ Clone the source code from GitHub
                 checkout scm
             }
         }
@@ -23,10 +24,12 @@ pipeline {
         stage('Build & Test') {
             steps {
                 script {
+                    echo "🔍 BRANCH_NAME = ${env.BRANCH_NAME}, GIT_BRANCH = ${env.GIT_BRANCH}"
+
                     def services = ['user-service', 'location-service', 'crime-service', 'api-gateway', 'discovery-server']
                     services.each { svc ->
                         dir(svc) {
-                            echo "🔨 Building and testing $svc"
+                            echo "🔨 Building and testing ${svc}"
                             sh "mvn clean install -DskipTests=false"
                         }
                     }
@@ -36,34 +39,28 @@ pipeline {
 
         stage('Docker Build & Push') {
             when {
-                anyOf {
-                    branch 'main'
-                    branch 'dev'
+                expression {
+                    def branch = env.BRANCH_NAME ?: env.GIT_BRANCH ?: 'unknown'
+                    echo "🧭 Docker stage on branch: ${branch}"
+                    return branch == 'main' || branch == 'dev'
                 }
             }
             steps {
                 script {
                     def services = ['user-service', 'location-service', 'crime-service', 'api-gateway', 'discovery-server']
 
-                    // 🐳 Log in to Docker Hub using stored credentials
+                    // 🔐 Docker Hub login using Jenkins credentials
                     withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                         sh '''
                             echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-                            docker info | grep Username || echo "⚠️ Docker login might have failed"
                         '''
                     }
 
-                    // 🛠 Build and push Docker image for each microservice
                     services.each { svc ->
                         dir(svc) {
-                            echo "📦 Building Docker image for $svc"
-                            sh "docker build -t $REGISTRY/${svc}:${BRANCH_NAME} ."
-
-                            echo "📤 Pushing Docker image for $svc to $REGISTRY"
-                            sh "docker push $REGISTRY/${svc}:${BRANCH_NAME}"
-
-                            // ✅ Confirm image exists locally
-                            sh "docker images | grep ${svc}"
+                            echo "📦 Building and pushing Docker image for ${svc}"
+                            sh "docker build -t $REGISTRY/${svc}:${env.BRANCH_NAME} ."
+                            sh "docker push $REGISTRY/${svc}:${env.BRANCH_NAME}"
                         }
                     }
                 }
@@ -72,21 +69,23 @@ pipeline {
 
         stage('Helm Deploy') {
             when {
-                anyOf {
-                    branch 'main'
-                    branch 'dev'
+                expression {
+                    def branch = env.BRANCH_NAME ?: env.GIT_BRANCH ?: 'unknown'
+                    echo "🧭 Helm stage on branch: ${branch}"
+                    return branch == 'main' || branch == 'dev'
                 }
             }
             steps {
                 script {
                     def namespace = (env.BRANCH_NAME == 'main') ? PROD_NAMESPACE : STAGING_NAMESPACE
 
-                    // 🧭 Update kubeconfig so kubectl/helm work with EKS
+                    // 🔧 Configure kubectl with AWS EKS cluster
                     sh '''
                         aws eks --region us-east-1 update-kubeconfig --name saferadius
                     '''
 
-                    // 🛳 Deploy application using Helm
+                    // 🚀 Deploy Helm chart to EKS
+                    echo "🚀 Deploying to namespace: ${namespace}"
                     sh "helm upgrade --install saferadius ./helm -n ${namespace} --create-namespace --debug"
                 }
             }
