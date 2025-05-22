@@ -13,8 +13,16 @@ pipeline {
         stage('Get Branch Name') {
             steps {
                 script {
-                    def branch = sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).trim()
-                    echo "📌 Branch detected: ${branch}"
+                    // Fallback-safe way to get the real branch name
+                    def branch = sh(
+                        script: '''
+                            BRANCH_NAME=$(git symbolic-ref --short HEAD 2>/dev/null || git rev-parse --short HEAD)
+                            echo $BRANCH_NAME
+                        ''',
+                        returnStdout: true
+                    ).trim()
+
+                    echo "📌 Branch: ${branch}"
                     env.BRANCH_NAME = branch
                 }
             }
@@ -70,7 +78,7 @@ pipeline {
             }
             steps {
                 script {
-                    echo "🚀 Deploying to EKS for branch: ${env.BRANCH_NAME}"
+                    echo "🚀 Helm deploy for ${env.BRANCH_NAME}"
                     sh """
                         helm upgrade --install ${HELM_RELEASE_NAME} ${HELM_CHART_DIR} \
                           --namespace ${NAMESPACE} \
@@ -85,10 +93,10 @@ pipeline {
 
     post {
         success {
-            echo "✅ Pipeline completed for ${env.BRANCH_NAME}"
+            echo "✅ Finished successfully on branch: ${env.BRANCH_NAME}"
         }
         failure {
-            echo "❌ Pipeline failed on ${env.BRANCH_NAME}"
+            echo "❌ Pipeline failed on branch: ${env.BRANCH_NAME}"
         }
     }
 }
