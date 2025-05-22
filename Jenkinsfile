@@ -4,7 +4,7 @@ pipeline {
     environment {
         REGISTRY = "docker.io"
         DOCKERHUB_USERNAME = "paumicsul"
-        IMAGE_TAG = "${env.BRANCH_NAME ?: 'latest'}"
+        IMAGE_TAG = "latest"
         HELM_RELEASE_NAME = "saferadius"
         HELM_CHART_DIR = "./helm"
         NAMESPACE = "default"
@@ -17,7 +17,7 @@ pipeline {
                     def services = ['user-service', 'location-service', 'crime-service', 'api-gateway', 'discovery-server']
                     for (svc in services) {
                         dir(svc) {
-                            echo "🔨 Building ${svc}"
+                            echo "🔨 Building and testing ${svc}"
                             sh "mvn clean install -DskipTests=false"
                         }
                     }
@@ -46,7 +46,7 @@ pipeline {
             }
         }
 
-        stage('Helm Deploy to EKS') {
+        stage('Deploy to EKS via Helm') {
             when {
                 anyOf {
                     branch 'main'
@@ -55,13 +55,13 @@ pipeline {
             }
             steps {
                 script {
-                    echo "🚀 Deploying to EKS via Helm"
+                    echo "🚀 Deploying to EKS with Helm for branch: ${env.BRANCH_NAME}"
                     sh """
-                    helm upgrade --install ${HELM_RELEASE_NAME} ${HELM_CHART_DIR} \
-                        --namespace ${NAMESPACE} \
-                        --set image.tag=${env.BRANCH_NAME} \
-                        --set image.registry=${REGISTRY} \
-                        --set image.repository=${DOCKERHUB_USERNAME}
+                        helm upgrade --install ${HELM_RELEASE_NAME} ${HELM_CHART_DIR} \
+                            --namespace ${NAMESPACE} \
+                            --set image.tag=${env.BRANCH_NAME} \
+                            --set image.registry=${REGISTRY} \
+                            --set image.repository=${DOCKERHUB_USERNAME}
                     """
                 }
             }
@@ -70,10 +70,10 @@ pipeline {
 
     post {
         success {
-            echo "✅ Build completed successfully for branch: ${env.BRANCH_NAME}"
+            echo "✅ Pipeline completed successfully."
         }
         failure {
-            echo "❌ Build failed for branch: ${env.BRANCH_NAME}"
+            echo "❌ Pipeline failed."
         }
     }
 }
