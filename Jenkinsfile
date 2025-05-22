@@ -17,6 +17,9 @@ pipeline {
         stage('Checkout') {
             steps {
                 checkout scm
+                script {
+                    echo "🔁 Current Git Branch: ${env.GIT_BRANCH}"
+                }
             }
         }
 
@@ -35,9 +38,8 @@ pipeline {
 
         stage('Docker Build & Push') {
             when {
-                anyOf {
-                    branch 'main'
-                    branch 'dev'
+                expression {
+                    return env.GIT_BRANCH?.contains("main") || env.GIT_BRANCH?.contains("dev")
                 }
             }
             steps {
@@ -52,8 +54,8 @@ pipeline {
 
                     services.each { svc ->
                         dir(svc) {
-                            sh "docker build -t $REGISTRY/${svc}:${BRANCH_NAME} ."
-                            sh "docker push $REGISTRY/${svc}:${BRANCH_NAME}"
+                            sh "docker build -t $REGISTRY/${svc}:${GIT_BRANCH} ."
+                            sh "docker push $REGISTRY/${svc}:${GIT_BRANCH}"
                         }
                     }
                 }
@@ -62,14 +64,13 @@ pipeline {
 
         stage('Helm Deploy') {
             when {
-                anyOf {
-                    branch 'main'
-                    branch 'dev'
+                expression {
+                    return env.GIT_BRANCH?.contains("main") || env.GIT_BRANCH?.contains("dev")
                 }
             }
             steps {
                 script {
-                    def namespace = (env.BRANCH_NAME == 'main') ? PROD_NAMESPACE : STAGING_NAMESPACE
+                    def namespace = (env.GIT_BRANCH?.contains("main")) ? PROD_NAMESPACE : STAGING_NAMESPACE
 
                     sh '''
                         aws eks --region us-east-1 update-kubeconfig --name saferadius
