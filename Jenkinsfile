@@ -4,31 +4,22 @@ pipeline {
     environment {
         REGISTRY = "docker.io"
         DOCKERHUB_USERNAME = "paumicsul"
-        IMAGE_TAG = "latest"
         HELM_RELEASE_NAME = "saferadius"
         HELM_CHART_DIR = "./helm"
         NAMESPACE = "default"
+        IMAGE_TAG = ""
     }
 
     stages {
         stage('Extract Branch Name') {
             steps {
                 script {
-                    // Try Jenkins-provided env first; fallback to Git
-                    def branch = env.BRANCH_NAME ?: sh(
-                        script: "git rev-parse --abbrev-ref HEAD || echo detached",
-                        returnStdout: true
-                    ).trim()
-
+                    def branch = env.BRANCH_NAME ?: sh(script: "git rev-parse --abbrev-ref HEAD || echo detached", returnStdout: true).trim()
                     if (branch == "HEAD" || branch == "detached") {
-                        branch = sh(
-                            script: "git branch --contains | grep '*' | sed 's/* //' || echo unknown",
-                            returnStdout: true
-                        ).trim()
+                        branch = sh(script: "git name-rev --name-only HEAD || echo unknown", returnStdout: true).trim()
                     }
-
                     echo "📌 Branch detected: ${branch}"
-                    env.CURRENT_BRANCH = branch
+                    env.IMAGE_TAG = branch
                 }
             }
         }
@@ -37,9 +28,9 @@ pipeline {
             steps {
                 script {
                     def services = ['user-service', 'location-service', 'crime-service', 'api-gateway', 'discovery-server']
-                    for (svc in services) {
+                    services.each { svc ->
                         dir(svc) {
-                            echo "🔨 Building and testing ${svc}"
+                            echo "🔨 Building ${svc}"
                             sh "mvn clean install -DskipTests=false"
                         }
                     }
@@ -47,38 +38,49 @@ pipeline {
             }
         }
 
+        stage('Docker Login') {
+            when {
+                expression { env.IMAGE_TAG == 'main' || env.IMAGE_TAG == 'dev' }
+            }
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    sh 'echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin ${REGISTRY}'
+                }
+            }
+        }
+
         stage('Docker Build & Push') {
             when {
-                expression { env.CURRENT_BRANCH == "main" || env.CURRENT_BRANCH == "dev" }
+                expression { env.IMAGE_TAG == 'main' || env.IMAGE_TAG == 'dev' }
             }
             steps {
                 script {
                     def services = ['user-service', 'location-service', 'crime-service', 'api-gateway', 'discovery-server']
-                    for (svc in services) {
+                    services.each { svc ->
                         dir(svc) {
-                            echo "🐳 Building Docker image for ${svc}"
-                            sh "docker build -t ${REGISTRY}/${DOCKERHUB_USERNAME}/${svc}:${env.CURRENT_BRANCH} ."
-                            echo "📤 Pushing image to Docker Hub"
-                            sh "docker push ${REGISTRY}/${DOCKERHUB_USERNAME}/${svc}:${env.CURRENT_BRANCH}"
+                            def image = "${REGISTRY}/${DOCKERHUB_USERNAME}/${svc}:${env.IMAGE_TAG}"
+                            echo "🐳 Building image: ${image}"
+                            sh "docker build -t ${image} ."
+                            sh "docker push ${image}"
                         }
                     }
                 }
             }
         }
 
-        stage('Helm Deploy') {
+        stage('Helm Deploy to EKS') {
             when {
-                expression { env.CURRENT_BRANCH == "main" || env.CURRENT_BRANCH == "dev" }
+                expression { env.IMAGE_TAG == 'main' || env.IMAGE_TAG == 'dev' }
             }
             steps {
                 script {
-                    echo "🚀 Deploying with Helm for branch: ${env.CURRENT_BRANCH}"
+                    echo "📦 Deploying to EKS using Helm (branch: ${env.IMAGE_TAG})"
                     sh """
-                    helm upgrade --install ${HELM_RELEASE_NAME} ${HELM_CHART_DIR} \
-                        --namespace ${NAMESPACE} \
-                        --set image.tag=${env.CURRENT_BRANCH} \
-                        --set image.registry=${REGISTRY} \
-                        --set image.repository=${DOCKERHUB_USERNAME}
+                        helm upgrade --install ${HELM_RELEASE_NAME} ${HELM_CHART_DIR} \
+                          --namespace ${NAMESPACE} \
+                          --set image.tag=${env.IMAGE_TAG} \
+                          --set image.registry=${REGISTRY} \
+                          --set image.repository=${DOCKERHUB_USERNAME}
                     """
                 }
             }
@@ -87,10 +89,10 @@ pipeline {
 
     post {
         success {
-            echo "✅ Pipeline completed successfully."
+            echo "✅ Pipeline completed successfully for branch: ${env.IMAGE_TAG}"
         }
         failure {
-            echo "❌ Pipeline failed."
+            echo "❌ Pipeline failed on branch: ${env.IMAGE_TAG}"
         }
     }
 }
