@@ -4,7 +4,7 @@
 
 ---
 
-## 🧰 What's Inside
+## 🧰 What is Inside
 
 - 🔐 `user-service` — JWT auth (register/login)
 - 🌐 `api-gateway` — central entry point, routes traffic securely
