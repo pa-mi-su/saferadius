@@ -59,28 +59,30 @@ pipeline {
             }
             steps {
                 withCredentials([
-                    string(credentialsId: 'AWS_ACCESS_KEY_ID', variable: 'AWS_ACCESS_KEY_ID'),
-                    string(credentialsId: 'AWS_SECRET_ACCESS_KEY', variable: 'AWS_SECRET_ACCESS_KEY')
+                    string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
+                    string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
                 ]) {
                     script {
                         echo "🚀 Deploying to EKS with Helm (branch: ${env.BRANCH_NAME})"
 
-                        sh '''
-                            export AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
-                            export AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
-                            export PATH=/usr/local/bin:/var/lib/jenkins/.local/bin:$PATH
+                        // Configure kubeconfig and update access
+                        sh """
+                            export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+                            export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+                            export PATH=/usr/local/bin:/var/lib/jenkins/.local/bin:\$PATH
                             aws eks update-kubeconfig --region us-east-1 --name saferadius --kubeconfig /var/lib/jenkins/.kube/config
-                        '''
+                        """
 
-                        sh '''
-                            export PATH=/usr/local/bin:/var/lib/jenkins/.local/bin:$PATH
-                            helm upgrade --install saferadius ./helm \
-                                --namespace default \
+                        // Run Helm upgrade
+                        sh """
+                            export PATH=/usr/local/bin:/var/lib/jenkins/.local/bin:\$PATH
+                            helm upgrade --install ${HELM_RELEASE_NAME} ${HELM_CHART_DIR} \
+                                --namespace ${NAMESPACE} \
                                 --kubeconfig /var/lib/jenkins/.kube/config \
-                                --set image.tag=${BRANCH_NAME} \
-                                --set image.registry=docker.io \
-                                --set image.repository=paumicsul
-                        '''
+                                --set image.tag=${IMAGE_TAG} \
+                                --set image.registry=${REGISTRY} \
+                                --set image.repository=${DOCKERHUB_USERNAME}
+                        """
                     }
                 }
             }
