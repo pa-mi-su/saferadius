@@ -40,10 +40,11 @@ pipeline {
                             echo "🐳 Building Docker image for ${svc}"
                             sh "docker build -t ${REGISTRY}/${DOCKERHUB_USERNAME}/${svc}:${env.BRANCH_NAME} ."
                             withCredentials([usernamePassword(credentialsId: 'docker-hub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                                env.SERVICE_NAME = svc
                                 sh '''
                                     echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-                                    docker build -t ${REGISTRY}/${DOCKERHUB_USERNAME}/${svc}:${env.BRANCH_NAME} .
-                                    docker push ${REGISTRY}/${DOCKERHUB_USERNAME}/${svc}:${env.BRANCH_NAME}
+                                    docker build -t docker.io/paumicsul/$SERVICE_NAME:$BRANCH_NAME .
+                                    docker push docker.io/paumicsul/$SERVICE_NAME:$BRANCH_NAME
                                 '''
                             }
                         }
