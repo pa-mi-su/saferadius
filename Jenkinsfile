@@ -35,13 +35,7 @@ pipeline {
             steps {
                 script {
                     def services = ['user-service', 'location-service', 'crime-service', 'api-gateway', 'discovery-server']
-                    withCredentials([
-                        usernamePassword(
-                            credentialsId: 'docker-hub-creds',
-                            usernameVariable: 'DOCKER_USER',
-                            passwordVariable: 'DOCKER_PASS'
-                        )
-                    ]) {
+                    withCredentials([usernamePassword(credentialsId: 'docker-hub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                         sh 'echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin'
                         for (svc in services) {
                             dir(svc) {
@@ -71,12 +65,14 @@ pipeline {
                     script {
                         echo "🚀 Deploying to EKS with Helm (branch: ${env.BRANCH_NAME})"
 
+                        // Configure kubeconfig
                         sh '''
                             export AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
                             export AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
                             aws eks update-kubeconfig --region us-east-1 --name saferadius
                         '''
 
+                        // Deploy using Helm
                         sh """
                             helm upgrade --install ${HELM_RELEASE_NAME} ${HELM_CHART_DIR} \
                                 --namespace ${NAMESPACE} \
