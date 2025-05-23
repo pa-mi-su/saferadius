@@ -58,15 +58,27 @@ pipeline {
                 }
             }
             steps {
-                script {
-                    echo "🚀 Deploying to EKS with Helm (branch: ${env.BRANCH_NAME})"
-                    sh """
-                        helm upgrade --install ${HELM_RELEASE_NAME} ${HELM_CHART_DIR} \
-                            --namespace ${NAMESPACE} \
-                            --set image.tag=${IMAGE_TAG} \
-                            --set image.registry=${REGISTRY} \
-                            --set image.repository=${DOCKERHUB_USERNAME}
-                    """
+                withCredentials([
+                    string(credentialsId: 'AWS_ACCESS_KEY_ID', variable: 'AWS_ACCESS_KEY_ID'),
+                    string(credentialsId: 'AWS_SECRET_ACCESS_KEY', variable: 'AWS_SECRET_ACCESS_KEY')
+                ]) {
+                    script {
+                        echo "🚀 Deploying to EKS with Helm (branch: ${env.BRANCH_NAME})"
+
+                        sh '''
+                            export AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
+                            export AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
+                            aws eks update-kubeconfig --region us-east-1 --name saferadius
+                        '''
+
+                        sh """
+                            helm upgrade --install ${HELM_RELEASE_NAME} ${HELM_CHART_DIR} \
+                                --namespace ${NAMESPACE} \
+                                --set image.tag=${IMAGE_TAG} \
+                                --set image.registry=${REGISTRY} \
+                                --set image.repository=${DOCKERHUB_USERNAME}
+                        """
+                    }
                 }
             }
         }
