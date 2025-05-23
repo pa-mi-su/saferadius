@@ -73,7 +73,7 @@ pipeline {
                             echo "⛓ Generating EKS authentication token"
                             TOKEN=$(aws eks get-token --region us-east-1 --cluster-name saferadius --output json | jq -r '.status.token')
 
-                            echo "📦 Running Helm upgrade with token"
+                            echo "📦 Running Helm upgrade"
                             helm upgrade --install saferadius ./helm \
                                 --namespace default \
                                 --kube-token "$TOKEN" \
