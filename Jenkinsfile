@@ -40,8 +40,11 @@ pipeline {
                             echo "🐳 Building Docker image for ${svc}"
                             sh "docker build -t ${REGISTRY}/${DOCKERHUB_USERNAME}/${svc}:${env.BRANCH_NAME} ."
                             withCredentials([usernamePassword(credentialsId: 'docker-hub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                                sh "echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin"
-                                sh "docker push ${REGISTRY}/${DOCKERHUB_USERNAME}/${svc}:${env.BRANCH_NAME}"
+                                sh '''
+                                    echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                                    docker build -t ${REGISTRY}/${DOCKERHUB_USERNAME}/${svc}:${env.BRANCH_NAME} .
+                                    docker push ${REGISTRY}/${DOCKERHUB_USERNAME}/${svc}:${env.BRANCH_NAME}
+                                '''
                             }
                         }
                     }
