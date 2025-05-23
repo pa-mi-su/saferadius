@@ -35,17 +35,14 @@ pipeline {
             steps {
                 script {
                     def services = ['user-service', 'location-service', 'crime-service', 'api-gateway', 'discovery-server']
-                    for (svc in services) {
-                        dir(svc) {
-                            echo "🐳 Building Docker image for ${svc}"
-                            sh "docker build -t ${REGISTRY}/${DOCKERHUB_USERNAME}/${svc}:${env.BRANCH_NAME} ."
-                            withCredentials([usernamePassword(credentialsId: 'docker-hub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                                env.SERVICE_NAME = svc
-                                sh '''
-                                    echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-                                    docker build -t docker.io/paumicsul/$SERVICE_NAME:$BRANCH_NAME .
-                                    docker push docker.io/paumicsul/$SERVICE_NAME:$BRANCH_NAME
-                                '''
+                    withCredentials([usernamePassword(credentialsId: 'docker-hub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                        sh 'echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin'
+                        for (svc in services) {
+                            dir(svc) {
+                                def image = "${REGISTRY}/${DOCKERHUB_USERNAME}/${svc}:${IMAGE_TAG}"
+                                echo "🐳 Building Docker image for ${svc}"
+                                sh "docker build -t ${image} ."
+                                sh "docker push ${image}"
                             }
                         }
                     }
@@ -62,11 +59,11 @@ pipeline {
             }
             steps {
                 script {
-                    echo "🚀 Deploying to EKS with Helm for branch: ${env.BRANCH_NAME}"
+                    echo "🚀 Deploying to EKS with Helm (branch: ${env.BRANCH_NAME})"
                     sh """
                         helm upgrade --install ${HELM_RELEASE_NAME} ${HELM_CHART_DIR} \
                             --namespace ${NAMESPACE} \
-                            --set image.tag=${env.BRANCH_NAME} \
+                            --set image.tag=${IMAGE_TAG} \
                             --set image.registry=${REGISTRY} \
                             --set image.repository=${DOCKERHUB_USERNAME}
                     """
@@ -80,7 +77,7 @@ pipeline {
             echo "✅ Pipeline completed successfully."
         }
         failure {
-            echo "❌ Pipeline failed."
+            echo "❌ Pipeline failed. Check the logs above for details."
         }
     }
 }
