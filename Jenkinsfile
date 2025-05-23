@@ -4,7 +4,7 @@ pipeline {
     environment {
         REGISTRY = "docker.io"
         DOCKERHUB_USERNAME = "paumicsul"
-        IMAGE_TAG = "latest"
+        IMAGE_TAG = "${env.BRANCH_NAME}"
         HELM_RELEASE_NAME = "saferadius"
         HELM_CHART_DIR = "./helm"
         NAMESPACE = "default"
@@ -39,7 +39,10 @@ pipeline {
                         dir(svc) {
                             echo "🐳 Building Docker image for ${svc}"
                             sh "docker build -t ${REGISTRY}/${DOCKERHUB_USERNAME}/${svc}:${env.BRANCH_NAME} ."
-                            sh "docker push ${REGISTRY}/${DOCKERHUB_USERNAME}/${svc}:${env.BRANCH_NAME}"
+                            withCredentials([usernamePassword(credentialsId: 'docker-hub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                                sh "echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin"
+                                sh "docker push ${REGISTRY}/${DOCKERHUB_USERNAME}/${svc}:${env.BRANCH_NAME}"
+                            }
                         }
                     }
                 }
