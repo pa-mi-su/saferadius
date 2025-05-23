@@ -68,17 +68,19 @@ pipeline {
                         sh '''
                             export AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
                             export AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
-                            export PATH=$PATH:/var/lib/jenkins/.local/bin
-                            aws eks update-kubeconfig --region us-east-1 --name saferadius
+                            export PATH=/usr/local/bin:/var/lib/jenkins/.local/bin:$PATH
+                            aws eks update-kubeconfig --region us-east-1 --name saferadius --kubeconfig /var/lib/jenkins/.kube/config
                         '''
 
-                        sh """
-                            helm upgrade --install ${HELM_RELEASE_NAME} ${HELM_CHART_DIR} \
-                                --namespace ${NAMESPACE} \
-                                --set image.tag=${IMAGE_TAG} \
-                                --set image.registry=${REGISTRY} \
-                                --set image.repository=${DOCKERHUB_USERNAME}
-                        """
+                        sh '''
+                            export PATH=/usr/local/bin:/var/lib/jenkins/.local/bin:$PATH
+                            helm upgrade --install saferadius ./helm \
+                                --namespace default \
+                                --kubeconfig /var/lib/jenkins/.kube/config \
+                                --set image.tag=${BRANCH_NAME} \
+                                --set image.registry=docker.io \
+                                --set image.repository=paumicsul
+                        '''
                     }
                 }
             }
