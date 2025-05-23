@@ -65,24 +65,23 @@ pipeline {
                     script {
                         echo "🚀 Deploying to EKS with Helm (branch: ${env.BRANCH_NAME})"
 
-                        // Configure kubeconfig and update access
-                        sh """
-                            export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-                            export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-                            export PATH=/usr/local/bin:/var/lib/jenkins/.local/bin:\$PATH
-                            aws eks update-kubeconfig --region us-east-1 --name saferadius --kubeconfig /var/lib/jenkins/.kube/config
-                        """
+                        sh '''#!/bin/bash
+                            export AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID"
+                            export AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY"
+                            export PATH=/usr/local/bin:/var/lib/jenkins/.local/bin:$PATH
+                            export KUBECONFIG=/var/lib/jenkins/.kube/config
 
-                        // Run Helm upgrade
-                        sh """
-                            export PATH=/usr/local/bin:/var/lib/jenkins/.local/bin:\$PATH
-                            helm upgrade --install ${HELM_RELEASE_NAME} ${HELM_CHART_DIR} \
-                                --namespace ${NAMESPACE} \
-                                --kubeconfig /var/lib/jenkins/.kube/config \
-                                --set image.tag=${IMAGE_TAG} \
-                                --set image.registry=${REGISTRY} \
-                                --set image.repository=${DOCKERHUB_USERNAME}
-                        """
+                            echo "⛓ Updating kubeconfig"
+                            aws eks update-kubeconfig --region us-east-1 --name saferadius --kubeconfig "$KUBECONFIG"
+
+                            echo "📦 Running Helm upgrade"
+                            helm upgrade --install saferadius ./helm \
+                                --namespace default \
+                                --kubeconfig "$KUBECONFIG" \
+                                --set image.tag="$BRANCH_NAME" \
+                                --set image.registry=docker.io \
+                                --set image.repository=paumicsul
+                        '''
                     }
                 }
             }
