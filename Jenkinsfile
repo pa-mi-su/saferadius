@@ -65,14 +65,13 @@ pipeline {
                     script {
                         echo "🚀 Deploying to EKS with Helm (branch: ${env.BRANCH_NAME})"
 
-                        // Configure kubeconfig
                         sh '''
                             export AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
                             export AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
+                            export PATH=$PATH:/var/lib/jenkins/.local/bin
                             aws eks update-kubeconfig --region us-east-1 --name saferadius
                         '''
 
-                        // Deploy using Helm
                         sh """
                             helm upgrade --install ${HELM_RELEASE_NAME} ${HELM_CHART_DIR} \
                                 --namespace ${NAMESPACE} \
