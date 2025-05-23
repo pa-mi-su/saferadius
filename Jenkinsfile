@@ -8,6 +8,8 @@ pipeline {
         HELM_RELEASE_NAME = "saferadius"
         HELM_CHART_DIR = "./helm"
         NAMESPACE = "default"
+        KUBECONFIG = "/var/lib/jenkins/.kube/config"
+        PATH = "/usr/local/bin:/var/lib/jenkins/.local/bin:$PATH"
     }
 
     stages {
@@ -58,31 +60,24 @@ pipeline {
                 }
             }
             steps {
-                withCredentials([
-                    string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
-                    string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
-                ]) {
-                    script {
-                        echo "🚀 Deploying to EKS with Helm (branch: ${env.BRANCH_NAME})"
-                        sh '''#!/bin/bash
-                            set -e
-                            export AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID"
-                            export AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY"
-                            export PATH=/usr/local/bin:/var/lib/jenkins/.local/bin:$PATH
+                script {
+                    echo "🚀 Deploying to EKS with Helm (branch: ${env.BRANCH_NAME})"
 
-                            echo "⛓ Generating EKS authentication token"
-                            TOKEN=$(aws eks get-token --region us-east-1 --cluster-name saferadius --output json | jq -r '.status.token')
+                    sh '''
+                        echo "⛓ Updating kubeconfig"
+                        aws eks update-kubeconfig \
+                          --region us-east-1 \
+                          --name saferadius \
+                          --kubeconfig "$KUBECONFIG"
 
-                            echo "📦 Running Helm upgrade"
-                            helm upgrade --install saferadius ./helm \
-                                --namespace default \
-                                --kube-token "$TOKEN" \
-                                --kube-apiserver https://9AE4F98C93BD3053C8F2FB2BAFC7A1D0.gr7.us-east-1.eks.amazonaws.com \
-                                --set image.tag="${BRANCH_NAME}" \
-                                --set image.registry=docker.io \
-                                --set image.repository=paumicsul
-                        '''
-                    }
+                        echo "📦 Running Helm upgrade"
+                        helm upgrade --install "$HELM_RELEASE_NAME" "$HELM_CHART_DIR" \
+                            --namespace "$NAMESPACE" \
+                            --kubeconfig "$KUBECONFIG" \
+                            --set image.tag="$IMAGE_TAG" \
+                            --set image.registry="$REGISTRY" \
+                            --set image.repository="$DOCKERHUB_USERNAME"
+                    '''
                 }
             }
         }
