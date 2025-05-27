@@ -2,14 +2,13 @@ pipeline {
     agent any
 
     environment {
+        PATH = "/usr/local/bin:/usr/bin:/bin"
         REGISTRY = "docker.io"
         DOCKERHUB_USERNAME = "paumicsul"
         IMAGE_TAG = "${env.BRANCH_NAME}"
         HELM_RELEASE_NAME = "saferadius"
         HELM_CHART_DIR = "./helm"
         NAMESPACE = "default"
-        KUBECONFIG = "/var/lib/jenkins/.kube/config"
-        PATH = "/usr/local/bin:/var/lib/jenkins/.local/bin:$PATH"
     }
 
     stages {
