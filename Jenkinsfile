@@ -6,9 +6,6 @@ pipeline {
         REGISTRY = "docker.io"
         DOCKERHUB_USERNAME = "paumicsul"
         IMAGE_TAG = "${env.BRANCH_NAME}"
-        HELM_RELEASE_NAME = "saferadius"
-        HELM_CHART_DIR = "./helm"
-        NAMESPACE = "default"
     }
 
     stages {
@@ -47,36 +44,6 @@ pipeline {
                             }
                         }
                     }
-                }
-            }
-        }
-
-        stage('Deploy to EKS via Helm') {
-            when {
-                anyOf {
-                    branch 'main'
-                    branch 'dev'
-                }
-            }
-            steps {
-                script {
-                    echo "🚀 Deploying to EKS with Helm (branch: ${env.BRANCH_NAME})"
-
-                    sh '''
-                        echo "⛓ Updating kubeconfig"
-                        aws eks update-kubeconfig \
-                          --region us-east-1 \
-                          --name saferadius \
-                          --kubeconfig "$KUBECONFIG"
-
-                        echo "📦 Running Helm upgrade"
-                        helm upgrade --install "$HELM_RELEASE_NAME" "$HELM_CHART_DIR" \
-                            --namespace "$NAMESPACE" \
-                            --kubeconfig "$KUBECONFIG" \
-                            --set image.tag="$IMAGE_TAG" \
-                            --set image.registry="$REGISTRY" \
-                            --set image.repository="$DOCKERHUB_USERNAME"
-                    '''
                 }
             }
         }
