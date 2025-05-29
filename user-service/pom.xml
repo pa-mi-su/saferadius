@@ -33,6 +33,9 @@
                         </goals>
                     </execution>
                 </executions>
+                <configuration>
+                    <mainClass>com.crimeapp.userservice.UserServiceApplication</mainClass> <!-- Use correct class -->
+                </configuration>
             </plugin>
         </plugins>
     </build>
