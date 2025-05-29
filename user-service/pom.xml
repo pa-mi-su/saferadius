@@ -22,6 +22,7 @@
 
     <build>
         <plugins>
+            <!-- Only add this plugin if this module is an executable jar -->
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
@@ -34,7 +35,7 @@
                     </execution>
                 </executions>
                 <configuration>
-                    <mainClass>com.crimeapp.userservice.UserServiceApplication</mainClass> <!-- Use correct class -->
+                    <mainClass>com.crimeapp.userservice.UserServiceApplication</mainClass>
                 </configuration>
             </plugin>
         </plugins>
