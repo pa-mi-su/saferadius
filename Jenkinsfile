@@ -7,7 +7,7 @@ pipeline {
         DOCKERHUB_USERNAME = "paumicsul"
         IMAGE_TAG = "${env.BRANCH_NAME}"
         EC2_USER = "ubuntu"
-        EC2_HOST = "44.204.5.96" 
+        EC2_HOST = "44.204.5.96"
         EC2_DIR = "/home/ubuntu/safe-radius"
     }
 
