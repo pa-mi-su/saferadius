@@ -7,7 +7,7 @@ pipeline {
         DOCKERHUB_USERNAME = "paumicsul"
         IMAGE_TAG = "${env.BRANCH_NAME}"
         EC2_USER = "ubuntu"
-        EC2_HOST = "44.204.5.96" // ← your EC2 public IP
+        EC2_HOST = "44.204.5.96"
         EC2_DIR = "/home/ubuntu/safe-radius"
     }
 
@@ -51,23 +51,21 @@ pipeline {
             }
         }
 
-        stage('Deploy to EC2 via Docker Compose') {
+        stage('Deploy to EC2 via Git + Docker Compose') {
             steps {
                 script {
-                    // Step 1: Create .env file with IMAGE_TAG value
                     writeFile file: '.env', text: "IMAGE_TAG=${IMAGE_TAG}"
-
-                    // Step 2: Push .env to EC2 and trigger docker-compose
                     sshagent(['ec2-runtime-ssh']) {
                         sh """
                             echo "🚀 Uploading .env to EC2"
                             scp -o StrictHostKeyChecking=no .env ${EC2_USER}@${EC2_HOST}:${EC2_DIR}/.env
 
-                            echo "🚀 Running docker-compose with tag ${IMAGE_TAG}"
+                            echo "🚀 Pulling latest code and restarting containers"
                             ssh -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} << 'EOF'
-                              cd ${EC2_DIR}
-                              docker-compose pull
-                              docker-compose up -d
+                                cd ${EC2_DIR}
+                                git pull origin main
+                                docker-compose pull
+                                docker-compose up -d
 EOF
                         """
                     }
