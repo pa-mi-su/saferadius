@@ -19,7 +19,7 @@ pipeline {
                     for (svc in services) {
                         dir(svc) {
                             echo "🔨 Building and testing ${svc}"
-                            sh "mvn clean install -DskipTests=false"
+                            sh 'mvn clean install -DskipTests=false'
                         }
                     }
                 }
@@ -42,6 +42,8 @@ pipeline {
                             dir(svc) {
                                 def image = "${REGISTRY}/${DOCKERHUB_USERNAME}/${svc}:${IMAGE_TAG}"
                                 echo "🐳 Building Docker image for ${svc}"
+                                sh 'mvn clean install -DskipTests'
+                                sh 'cp target/*.jar app.jar'
                                 sh "docker build --platform linux/amd64 -t ${image} ."
                                 sh "docker push ${image}"
                             }
@@ -64,8 +66,9 @@ pipeline {
                             ssh -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} << 'EOF'
                                 cd ${EC2_DIR}
                                 git pull origin main
+                                docker-compose down
                                 docker-compose pull
-                                docker-compose up -d
+                                docker-compose up -d --remove-orphans
 EOF
                         """
                     }
