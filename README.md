@@ -1,6 +1,6 @@
 # 🛡️ SafeRadius
 
-        **SafeRadius** is a production-ready Java Spring Boot microservices platform with centralized Docker Compose deployment. It features secure authentication, service discovery, and modular REST APIs — designed for fast local or EC2-based deployment and testing.
+        **SafeRadius** is a production-ready Java SpringBoot microservices platform with centralized Docker Compose deployment. It features secure authentication, service discovery, and modular REST APIs — designed for fast local or EC2-based deployment and testing.
 
         ---
 
