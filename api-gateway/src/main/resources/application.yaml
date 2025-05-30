@@ -1,12 +1,15 @@
 server:
   port: 8080
 
+spring:
+  application:
+    name: api-gateway
+
 management:
   endpoints:
     web:
       exposure:
-        include: health,info
-      base-path: /actuator
+        include: "*"
   endpoint:
     health:
       show-details: always
