@@ -1,6 +1,10 @@
 pipeline {
     agent any
 
+    parameters {
+        choice(name: 'STAGE_TO_RUN', choices: ['all', 'build', 'docker', 'deploy'], description: 'Choose which pipeline stage to run')
+    }
+
     options {
         ansiColor('xterm') // 🔥 Enables ANSI color output
     }
@@ -17,6 +21,12 @@ pipeline {
 
     stages {
         stage('📦 Build & Test') {
+            when {
+                anyOf {
+                    expression { params.STAGE_TO_RUN == 'all' }
+                    expression { params.STAGE_TO_RUN == 'build' }
+                }
+            }
             steps {
                 script {
                     def services = ['user-service', 'location-service', 'crime-service', 'api-gateway', 'discovery-server']
@@ -33,9 +43,15 @@ pipeline {
 
         stage('🐳 Docker Build & Push') {
             when {
-                anyOf {
-                    branch 'main'
-                    branch 'dev'
+                allOf {
+                    anyOf {
+                        expression { params.STAGE_TO_RUN == 'all' }
+                        expression { params.STAGE_TO_RUN == 'docker' }
+                    }
+                    anyOf {
+                        branch 'main'
+                        branch 'dev'
+                    }
                 }
             }
             steps {
@@ -61,6 +77,12 @@ pipeline {
         }
 
         stage('🚀 Deploy to EC2 via Git + Docker Compose') {
+            when {
+                anyOf {
+                    expression { params.STAGE_TO_RUN == 'all' }
+                    expression { params.STAGE_TO_RUN == 'deploy' }
+                }
+            }
             steps {
                 script {
                     writeFile file: '.env', text: "IMAGE_TAG=${IMAGE_TAG}"
@@ -70,15 +92,16 @@ pipeline {
                             echo "\u001B[1;33m📤 Uploading .env to EC2\u001B[0m"
                             scp -o StrictHostKeyChecking=no .env ${EC2_USER}@${EC2_HOST}:${EC2_DIR}/.env
 
-                            echo "\u001B[1;34m🔄 Pulling latest code and restarting containers\u001B[0m"
-                            ssh -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} << 'EOF'
-                                cd ${EC2_DIR}
-                                git pull origin main
-                                docker-compose down
-                                docker-compose pull
-                                docker-compose up -d --remove-orphans
-EOF
+                            echo "\u001B[1;34m🔄 Pulling latest code on EC2...\u001B[0m"
+                            ssh -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} "
+                                cd ${EC2_DIR} &&
+                                git pull origin ${BRANCH_NAME} &&
+                                docker compose pull &&
+                                docker compose down &&
+                                docker compose up -d
+                            "
                         """
+                        echo "\u001B[1;32m✅ Deployment complete.\u001B[0m"
                     }
                 }
             }
@@ -87,10 +110,10 @@ EOF
 
     post {
         success {
-            echo "\u001B[1;32m✅ Pipeline completed successfully.\u001B[0m"
+            echo '✅ Pipeline completed successfully.'
         }
         failure {
-            echo "\u001B[1;31m❌ Pipeline failed. Check the logs above for details.\u001B[0m"
+            echo '❌ Pipeline failed.'
         }
     }
 }
